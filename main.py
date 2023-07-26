@@ -28,7 +28,8 @@ def add_entry(project, description, start, duration):
             'start': start.isoformat()+'Z',
             'pid': project_id,
             'workspace_id': TOGGL_W_ID,
-            'created_with': 'arbtt-to-toggl',
+            'created_with': 'arbtt2toggl',
+            'tags': ['arbtt2toggl'],
             }
     response = requests.post(url, headers=headers, auth=auth, data=json.dumps(data))
     if response.status_code != 200:
