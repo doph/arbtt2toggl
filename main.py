@@ -1,6 +1,6 @@
 import subprocess
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pytz import timezone as pytz_timezone
 from io import StringIO
 import requests
@@ -9,14 +9,21 @@ import time
 import os
 import yaml
 
-with open('secrets.yaml', 'r') as file:
-    secrets = yaml.safe_load(file)
+try:
+    with open('secrets.yaml', 'r') as file:
+        secrets = yaml.safe_load(file)
+except FileNotFoundError:
+    print("Please create 'secrets.yaml' following the example in secrets_template.yaml.")
+    exit(1)
 
 TOGGL_P_ID_MAP = secrets['TOGGL_P_ID_MAP']
 TOGGL_KEY = secrets['TOGGL_KEY']
 TOGGL_W_ID = secrets['TOGGL_W_ID']
+ARBTT_TIMEZONE = secrets['ARBTT_TIMEZONE']
 
 def add_entry(project, description, start, duration):
+    '''Add a new entry to Toggl'''
+    
     project_id = TOGGL_P_ID_MAP.get(project)
     headers = {
         'Content-Type': 'application/json',
@@ -38,7 +45,7 @@ def add_entry(project, description, start, duration):
 
 
 def get_arbtt_data(last_run_date):
-    # run the arbtt-stats command and get the output
+    '''run the arbtt-stats command and get the output as list of dicts'''
 
     # sample_age is the duration of time since the last_run_date in the format hours:minutes
     now = datetime.now()
@@ -65,8 +72,8 @@ def get_arbtt_data(last_run_date):
         desc = " ".join(tokens[1:])
         # parse times
         start_time = datetime.strptime(start_time, "%m/%d/%y %H:%M:%S")
-        la_timezone = pytz_timezone("America/Los_Angeles")
-        start_time = start_time.astimezone(la_timezone).astimezone(timezone.utc).replace(tzinfo=None)
+        arbtt_timezone = pytz_timezone(ARBTT_TIMEZONE)
+        start_time = start_time.astimezone(arbtt_timezone).astimezone(timezone.utc).replace(tzinfo=None)
         duration_parts = duration.split(":")
         duration_seconds = int(duration_parts[0]) * 3600 + int(duration_parts[1]) * 60 + int(duration_parts[2])
         data.append({
@@ -76,7 +83,32 @@ def get_arbtt_data(last_run_date):
             'duration': duration_seconds,
         })
 
+    print(f"Got {len(data)} new entries from arbtt-stats.")
+
     return data
+
+
+def merge_entries(data):
+    '''Merge entries that are within a minute of each other and have the same project'''
+
+    data.sort(key=lambda x: x['start_time'])
+    merged_data = []
+    for entry in data:
+        if not merged_data:
+            merged_data.append(entry)
+        else:
+            last_entry = merged_data[-1]
+            if last_entry['project'] == entry['project'] and last_entry['start_time'] + timedelta(seconds=last_entry['duration'] + 60) >= entry['start_time']:
+                last_entry['duration'] += entry['duration']
+                if entry['desc'] not in last_entry['desc']:
+                    last_entry['desc'] += f", {entry['desc']}"
+            else:
+                merged_data.append(entry)
+
+    print(f"Merged {len(data) - len(merged_data)} entries.")
+
+    return merged_data
+
 
 def add_all_entries(data):
     for entry in data:
@@ -98,32 +130,29 @@ def add_all_entries(data):
 
 
 def save_last_run_date():
-    # Get the current date and time
+    '''Save the current date and time to a file to exclude entries already added to toggl'''
     now = datetime.now()
-
-    # Format the date and time into a string
     date_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
-
-    # Open the file in write mode
     with open(os.path.expanduser('~/.arbtt/last_run'), 'w') as file:
-        # Write the date and time string to the file
         file.write(date_time_str)
 
 
 def get_last_run_date():
-    # Open the file in read mode
-    with open(os.path.expanduser('~/.arbtt/last_run'), 'r') as file:
-        # Read the date and time string from the file
-        date_time_str = file.read().strip()
-
-    # Convert the date and time string into a datetime object
-    last_run_date = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M:%S")
-
+    '''Get the date and time of the last run from a file'''
+    try:
+        with open(os.path.expanduser('~/.arbtt/last_run'), 'r') as file:
+            date_time_str = file.read().strip()
+        last_run_date = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M:%S")
+    except FileNotFoundError:
+        # If the file does not exist, return the Unix epoch start
+        last_run_date = datetime(1970, 1, 1, 0, 0, 0)
     return last_run_date
+
 
 if __name__ == "__main__":
     last_run_date = get_last_run_date()
     data = get_arbtt_data(last_run_date)
+    data = merge_entries(data)
     print(f"Adding {len(data)} entries to Toggl...")
     add_all_entries(data)
     save_last_run_date()

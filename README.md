@@ -7,9 +7,9 @@
 **arbtt2toggl** is a python script that creates entries in Toggl by dumping logs from arbtt using the `arbtt-stats` cli tool.
 
 ## Setup
-Create a secrets.yaml file with your Toggl API key and workspace ID (and optionally, Project IDs). Follow the example in secrets_template.yaml
+Create a `secrets.yaml` file with your Toggl API key, Toggl workspace ID, arbtt timezone, and optionally, Toggl Project IDs you'd like to match arbtt projects with. Follow the example in `secrets_template.yaml`.
 
-Configure arbtt's `categorize.cfg` in a way that tags your entires `project:Name_Description`. Here's a sample from mine:
+Configure arbtt's `categorize.cfg` in a way that tags your entries `project:Name_Description`. Here's a sample from mine, which categorizes windows and adds a 25 character slice of the window title to the tag:
 ```
 -- Primary apps with titles as descriptions
 current window $program == ["chromium-browser","Navigator"] && current window $title =~ /^(.{0,25}).*/    ==> tag project:Web_$1,
@@ -30,5 +30,3 @@ Consider putting it on a cron.
 
 ## Notes
 Hardcoding a workspace ID and project IDs is not user friendly, but it made the script a lot easier to bang out. You can find your API key at the bottom of your Toggl Profile Settings. Your workspace ID and project ID[s] can be found in the toggl url if you navigate to a project, e.g. `https://track.toggl.com/{your_workspace_id}/projects/{your_project_id}/team`
-
-I believe the only user-specific bit I left in the script that you may need to change is the LA timezone.
